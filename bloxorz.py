@@ -1,15 +1,16 @@
 from copy import copy, deepcopy
 from math import sqrt
 from random import choice, choices, randint, randrange, random
+from subprocess import list2cmdline
 import sys
 from typing import List, Tuple
 
 # constant genetic variables
 POPULATION_SIZE = 10
-NUMB_OF_ELITE_PATH_SOLUTION = 1
+# NUMB_OF_ELITE_PATH_SOLUTION = 1
 TOURNAMENT_SELECTION_SIZE = 5
 MUTATION_RATE = 0.1
-GENERATION_LIMIT = 100
+GENERATION_LIMIT = 10000
 
 # special point
 DESTINATION = 9
@@ -78,25 +79,31 @@ def readMap(fileMap):
 def generate_population(population_size: int) -> Population:
     land_size = MAP_ROW * MAP_COL
     rand_path_size = randrange(land_size//2, 2*land_size)
-    return [Block(xStart, yStart, STANDING, None, sourceMap).initialize_path(rand_path_size) for _ in range(population_size)]
+    population: Population = []
+    while (len(population) < population_size):
+        new_path = PathSolution().initialize(rand_path_size)
+        fitness_path(new_path)
+        if (new_path.last_step > 3):
+            population.append(new_path)
+    return population
 
 
 def selection_pair(population: Population) -> Population:
-    weight_dist = []
-    for path_temp in population:
-        weight_dist.append(path_temp.distance_to_destination)
-    return choices(population=population, weights=weight_dist, k=2)
+    weight_of_fitness = []
+    for path in population:
+        value = fitness_path(path)
+        weight_of_fitness.append(1/value if value != 0 else 1)
+    choice = choices(population=population, weights=weight_of_fitness, k=2)
+    return choice
 
 
 def crossover_single_point(a: 'PathSolution', b: 'PathSolution'):
     path1 = a.path
     path2 = b.path
 
-    length = min(len(path1), len(path2))
-    if length < 2:
-        return a, b
-
-    pos = randint(1, length-1)
+    # Cross at last step
+    pos = min(a.last_step, b.last_step) if min(
+        a.last_step, b.last_step) > 0 else 1
     a.path = path1[0:pos] + path2[pos:]
     b.path = path2[0:pos] + path1[pos:]
     return a, b
@@ -105,10 +112,12 @@ def crossover_single_point(a: 'PathSolution', b: 'PathSolution'):
 def mutation(path_obj: 'PathSolution', num: int = 1, probability: float = 0.5) -> 'PathSolution':
     path = path_obj.path
     direction = 'UDLR'
+    # print(f'last = {path_obj.last_step}')
+
     if len(path) <= 1:
-        return path
+        return path_obj
     for _ in range(num):
-        index = randrange(0, len(path)-1, 1)
+        index = randrange(0, path_obj.last_step+2, 1)
         rand_direction = choice(direction.replace(path[index], ''))
         pos_dir = path[index] if random(
         ) > probability else rand_direction
@@ -119,14 +128,14 @@ def mutation(path_obj: 'PathSolution', num: int = 1, probability: float = 0.5) -
 def evolve(population: Population):
     for gen in range(GENERATION_LIMIT):
         sorted_paths = sorted(
-            population, key=lambda path: path.distance_to_destination, reverse=False)
+            population, key=lambda path: fitness_path(path), reverse=False)
 
-        if sorted_paths[0].distance_to_destination == 0:
+        if fitness_path(sorted_paths[0]) == 0:
             break
 
         next_generation = sorted_paths[0:2]
 
-        for j in range(len(sorted_paths)//2 - 1):
+        for _ in range(len(sorted_paths)//2 - 1):
             parents = selection_pair(population)
             offspring_a, offspring_b = crossover_single_point(
                 parents[0], parents[1])
@@ -135,6 +144,9 @@ def evolve(population: Population):
             next_generation += [offspring_a, offspring_b]
 
         population = next_generation
+
+    population = sorted(
+        population, key=lambda path: fitness_path(path), reverse=False)
 
     return population, gen
 ## GENETIC ALGORITHM ##
@@ -152,44 +164,9 @@ class Block:
         self.path_info = PathSolution()
 
     def initialize_path(self, rand_size: int) -> 'PathSolution':
-        path = self.path_info.initialize(rand_size).path
-        actual_path: str = ''
-        dist: float = 0
-        for direction in path:
-            x = self.x
-            y = self.y
-            print(f'>>> (x,y) = ({x},{y})')
-            print("\n>>> current direction " + direction)
-            if (self.rotation == SPLIT):
-                x1 = self.x1
-                y1 = self.y1
-                dist = max(distance_fitness(x, y),
-                           distance_fitness(x1, y1))
-            else:
-                dist = distance_fitness(x, y)
+        init_path = self.path_info.initialize(rand_size)
+        self.path_info = fitness_path(init_path)
 
-            if direction == UP:
-                self.move_up()
-            elif direction == DOWN:
-                self.move_down()
-            elif direction == RIGHT:
-                self.move_right()
-            elif direction == LEFT:
-                self.move_left()
-            else:
-                pass
-
-            if (isValidBlock(self) == False):
-                self.path_info = PathSolution(actual_path, dist, x, y)
-                break
-            else:
-                actual_path += direction
-
-        if (actual_path == path):
-            print('\n>>>> The same generated path')
-        print('\n >>>> this is path = ' + self.path_info.path)
-        print(
-            f'\n >>> after moving => (x,y) = ({self.path_info.x_finish}, {self.path_info.y_finish}) with distance to goal = {self.path_info.distance_to_destination}')
         return self.path_info
 
     def __lt__(self, block):
@@ -337,40 +314,85 @@ class Land:
                 return (column, row)
 
             except ValueError as ve:
-                print("destination hasn't been found")
+                continue
+                #     print("destination hasn't been found")
 
 
 class PathSolution:
-    def __init__(self, path: str = '', distance: float = 0, x=0, y=0):
+    def __init__(self, path: str = '', last_step=0, distance: float = 0, x=0, y=0, actual_path=''):
         self.path = path
         self.distance_to_destination = distance
+        self.last_step = last_step
         self.x_finish = x
         self.y_finish = y
+        self.actual_path = actual_path
 
     def initialize(self, rand_path_size):
-        print('\n >>>> Random size for path = ', rand_path_size)
         rand_path = choices([UP, DOWN, RIGHT, LEFT], k=rand_path_size)
-
-        temp = ''
-        for p in rand_path:
-            temp += p
-
-        self.path = temp
+        self.path = ''.join(rand_path)
         return self
-
-    # def set_distance(self, dis: float):
-    #     self.distance_to_destination = dis
 
     def eliminate_circular(self):
         '''' '''
 
 
-def distance_fitness(x, y):
+def distance_to_goal(x, y):
     x_dest = land.x_dest
     y_dest = land.y_dest
     return sqrt(
         (x-x_dest)**2 + (y-y_dest)**2)
 
+
+def fitness_path(rand_path: PathSolution) -> float:
+    block = Block(xStart, yStart, STANDING, None, sourceMap)
+    min_dist = sqrt(MAP_COL**2 + MAP_ROW**2)
+
+    path = rand_path.path
+    actual_path: str = ''
+    dist: float = 0
+    for idx, direction in enumerate(path):
+        x = block.x
+        y = block.y
+
+        if (block.rotation == SPLIT):
+            x1 = block.x1
+            y1 = block.y1
+            dist = max(distance_to_goal(x, y),
+                       distance_to_goal(x1, y1))
+        else:
+            dist = distance_to_goal(x, y)
+
+        min_dist = dist if dist < min_dist else min_dist
+        if direction == UP:
+            block.move_up()
+        elif direction == DOWN:
+            block.move_down()
+        elif direction == RIGHT:
+            block.move_right()
+        elif direction == LEFT:
+            block.move_left()
+        else:
+            pass
+
+        if (isValidBlock(block) == False):
+            if (len(ManaBoa) != 0):
+
+            rand_path.x_finish = x
+            rand_path.y_finish = y
+            rand_path.last_step = idx
+            rand_path.distance_to_destination = min_dist
+            rand_path.actual_path = actual_path
+            break
+        else:
+            actual_path += direction
+
+    # if (actual_path == path):
+    #     print('\n>>>> The same generated path')
+
+    # print('\n >>>> This is path = ' + rand_path.path)
+    # print(
+    #     f'\n >>> after moving => (x,y) = ({rand_path.x_finish}, {rand_path.y_finish}) with distance to goal = {dist}')
+    return min_dist
 # Case 3: Chữ X
 
 
@@ -429,7 +451,7 @@ def isHeavyToggleSwitch(block: Block, x, y):
 def isSoftSwitchCloseOnly(block: Block, x, y):
     board = block.board
 
-    # print("(x-y) = (", x,"-", y,")")
+    # print(f'(x,y) = ({x},{y})')
 
     for item in ManaBoa:
         if (x, y) == (item[0], item[1]):
@@ -444,6 +466,7 @@ def isSoftSwitchCloseOnly(block: Block, x, y):
 
 def isSoftToggleSwitch(block: Block, x, y):
     board = block.board
+    # print(f'(x,y) = ({x},{y})')
 
     for item in ManaBoa:
         if (x, y) == (item[0], item[1]):
@@ -570,7 +593,7 @@ def isFloor(block: Block):
 # isValidBLock
 
 
-def isValidBlock(block: Block):
+def isValidBlock(block: Block, dist: float):
     if isFloor(block):
 
         # local definition
@@ -622,6 +645,7 @@ def isValidBlock(block: Block):
         # Case 7: Phân thân
         if rotation == STANDING and board[y][x] == TELEPORT:
             isTeleport(block, x, y)
+
         # Case7_1: MERGE BLOCK
         if rotation == SPLIT:  # check IS_MERGE
             # case LAYING_X: x first
@@ -713,13 +737,24 @@ def printSuccessRoad(block: Block):
     print("COMSUME", step, "STEP!!!!")
 
 
+def print_population_with():
+    print()
+
+
 # START PROGRAM HERE
 passState: List[Block] = []
 
+
 MAP_ROW, MAP_COL, xStart, yStart, sourceMap, ManaBoa = readMap(
-    'map.txt')
+    'map2.txt')
 
 land = Land(sourceMap, MAP_ROW, MAP_COL)
 init_block = Block(xStart, yStart, STANDING, None, sourceMap)
 population = generate_population(POPULATION_SIZE)
 population, geneneration = evolve(population=population)
+print(
+    f'Population with destination length = {fitness_path(population[0])} with path [{population[0].path[0:population[0].last_step]}] at generation {geneneration}')
+
+
+# FITNESS = min_dist*10 + if(has bridge) pass_no_bridge + 100 / pass_bridge
+# ĐỊNH NGHĨA LẠI DISTANCE :>
