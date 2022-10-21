@@ -46,7 +46,7 @@ RIGHT = 'R'
 Population = List['PathSolution']
 
 
-def readMap(fileMap):
+def read_map(fileMap):
     with open(fileMap) as f:
         MAP_ROW, MAP_COL, xStart, yStart = [
             int(x) for x in next(f).split()]  # read first line
@@ -317,6 +317,10 @@ class Land:
                 continue
                 #     print("destination hasn't been found")
 
+    def weigh_map(self):
+        for row in range(MAP_ROW - 1):
+            print()
+
 
 class PathSolution:
     def __init__(self, path: str = '', last_step=0, distance: float = 0, x=0, y=0, actual_path=''):
@@ -376,7 +380,8 @@ def fitness_path(rand_path: PathSolution) -> float:
 
         if (isValidBlock(block) == False):
             if (len(ManaBoa) != 0):
-
+                # DEFINE Fitness Func
+                print()
             rand_path.x_finish = x
             rand_path.y_finish = y
             rand_path.last_step = idx
@@ -593,7 +598,7 @@ def isFloor(block: Block):
 # isValidBLock
 
 
-def isValidBlock(block: Block, dist: float):
+def isValidBlock(block: Block, dist: float = 0):
     if isFloor(block):
 
         # local definition
@@ -745,16 +750,17 @@ def print_population_with():
 passState: List[Block] = []
 
 
-MAP_ROW, MAP_COL, xStart, yStart, sourceMap, ManaBoa = readMap(
-    'map2.txt')
+# MAP_ROW, MAP_COL, xStart, yStart, sourceMap, ManaBoa = read_map(
+#     'map/map'+sys.argv[1:][0]+'.txt')
 
-land = Land(sourceMap, MAP_ROW, MAP_COL)
-init_block = Block(xStart, yStart, STANDING, None, sourceMap)
-population = generate_population(POPULATION_SIZE)
-population, geneneration = evolve(population=population)
-print(
-    f'Population with destination length = {fitness_path(population[0])} with path [{population[0].path[0:population[0].last_step]}] at generation {geneneration}')
+# land = Land(sourceMap, MAP_ROW, MAP_COL)
+# init_block = Block(xStart, yStart, STANDING, None, sourceMap)
+# population = generate_population(POPULATION_SIZE)
+# population, geneneration = evolve(population=population)
+# print(
+#     f'Population with destination length = {fitness_path(population[0])} with path [{population[0].path[0:population[0].last_step]}] at generation {geneneration}')
 
 
 # FITNESS = min_dist*10 + if(has bridge) pass_no_bridge + 100 / pass_bridge
 # ĐỊNH NGHĨA LẠI DISTANCE :>
+# sys.modules[__name__] = 'bloxorz'
