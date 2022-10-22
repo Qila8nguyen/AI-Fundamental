@@ -752,6 +752,8 @@ passState: List[Block] = []
 
 # MAP_ROW, MAP_COL, xStart, yStart, sourceMap, ManaBoa = read_map(
 #     'map/map'+sys.argv[1:][0]+'.txt')
+MAP_ROW, MAP_COL, xStart, yStart, source_map, man_board = read_map(
+    'map/map02.txt')
 
 # land = Land(sourceMap, MAP_ROW, MAP_COL)
 # init_block = Block(xStart, yStart, STANDING, None, sourceMap)
