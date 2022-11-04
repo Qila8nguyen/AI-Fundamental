@@ -36,6 +36,9 @@ def BFS_weigh (init_row, init_col, map_row, map_col, source_map, man_board):
           record.append((new_row, new_col))
     
     weigh_numb +=1
+
+  map_bridge_to_switch(man_board, weight_map, map_row, map_col, source_map)
+  # print(weight_map)
   return weight_map
 
 def bridge_list(man_board):
@@ -49,6 +52,32 @@ def bridge_list(man_board):
   print(tuple_row_col)
 
   return tuple_row_col
+
+def map_bridge_to_switch(man_board, weight_map, map_row, map_col, source_map):
+  bridges = bridge_list(man_board)
+  for item in man_board:
+    col = item[0]
+    row = item[1]
+    print(item)
+    weigh = weight_map[item[3]][item[4]]
+    weight_map[row][col] = weigh
+
+    arr_4d = [(0,1), (0,-1),(1,0), (-1,0)]
+    for direction in arr_4d:
+      r,c = direction
+      new_row = row+r
+      new_col = col+c
+
+      if (new_row < 0 or new_row >= map_row or new_col < 0 or new_col >= map_col):
+        continue
+
+      if (source_map[new_row][new_col] != 0 or (new_row, new_col) not in bridges):
+        weight_map[new_row][new_col] = weigh+1
+
+
+# boarding = [[2, 2, 2, 4, 4, 4, 5],[8, 1, 2, 4, 10, 4, 11]]
+# print(map_bridge_to_switch(2,2,boarding))
+
 
 
 # def main ():

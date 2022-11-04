@@ -2,17 +2,18 @@ from copy import copy, deepcopy
 from math import sqrt
 from operator import truediv
 from random import choice, choices, randint, randrange, random
+import time
 import sys
 from typing import List, Tuple
 
 from utils import BFS_weigh
 
 # constant genetic variables
-POPULATION_SIZE = 12
+POPULATION_SIZE = 20
 # NUMB_OF_ELITE_PATH_SOLUTION = 1
 # TOURNAMENT_SELECTION_SIZE = 5
 # MUTATION_RATE = 0.1 -> 1/step
-GENERATION_LIMIT = 1000
+GENERATION_LIMIT = 10000
 
 # special point
 DESTINATION = 9
@@ -176,21 +177,21 @@ def evolve(population: Population):
         sorted_paths = sorted(
             population, key=lambda path: fitness_path(path), reverse=False)
 
+        print(f'Gen {gen} has {sorted_paths[0].distance_to_destination}, with length {len(sorted_paths)}')
         if sorted_paths[0].distance_to_destination == 0:
             break
 
-        next_generation = sorted_paths[0:2]
-        # temp_pop = deepcopy(population)
+        next_generation = deepcopy(sorted_paths[0:2])
 
-        for _ in range(len(sorted_paths)//2):
+        for _ in range(len(sorted_paths)//2 - 1):
             parents = selection_pair(population)
             offspring_a, offspring_b = uniform_crossover(
                 parents[0], parents[1])
-            # offspring_a = mutation(offspring_a)
-            # offspring_b = mutation(offspring_b)
+            # print(f'Gen {gen} has {sorted_paths[0].distance_to_destination}, with length {len(next_generation)}')
             next_generation += [offspring_a, offspring_b]
 
         population = next_generation
+    
 
     population = sorted(
         population, key=lambda path: fitness_path(path), reverse=False)
@@ -380,12 +381,8 @@ class PathSolution:
         self.path = ''.join(rand_path)
         return self
 
-    def eliminate_circular(self):
-        '''' '''
-
 
 def distance_to_goal(x, y):
-    # print(f'weigh_map ({x},{y}) = {weigh_map[y][x]}')
     return weigh_map[y][x]
 
 
@@ -418,6 +415,18 @@ def fitness_path(rand_path: PathSolution) -> float:
         else:
             pass
 
+        if dist <=3: 
+            rand_path.x_finish = x
+            rand_path.y_finish = y
+            rand_path.last_step = idx
+            rand_path.distance_to_destination = dist
+            rand_path.actual_path = actual_path
+            rand_path.rotation = current_rotation
+
+            if get_in_hole(rand_path):
+                rand_path.distance_to_destination = 0
+                return 0
+
         if (isValidBlock(block) == False):
             rand_path.x_finish = x
             rand_path.y_finish = y
@@ -426,18 +435,14 @@ def fitness_path(rand_path: PathSolution) -> float:
             rand_path.actual_path = actual_path
             rand_path.rotation = current_rotation
 
-            if (dist <=3 and get_in_hole(rand_path)): 
-                rand_path.distance_to_destination = 0
-                return 0
             break
         else:
             actual_path += direction
 
     # print(f'weigh_map ({x},{y}) = {weigh_map[y][x]}')
     return dist
+
 # Case 3: Chữ X
-
-
 def isHeavyToggleSwitch(block: Block, x, y):
     board = block.board
 
@@ -615,10 +620,10 @@ def isFloor(block: Block):
         if rotation == STANDING:
             return True
         elif rotation == LYING_Y:
-            if y+1 < MAP_ROW and y-1 >= 0 and board[y+1][x] != 0:
+            if y+1 < MAP_ROW and board[y+1][x] != 0:
                 return True
         elif rotation == LYING_X:
-            if x+1 < MAP_COL and board[y][x+1] != 0:
+            if x+1 < MAP_COL and board[y][x] != 0:
                 return True
         else:  # case SPLIT
             x1 = block.x1
@@ -712,6 +717,7 @@ def isValidBlock(block: Block, dist: float = 0):
         if rotation == STANDING and board[y][x] == OPEN_HEAVY_SWITCH:
             isHeavySwitchOpenOnly(block, x, y)
 
+
         return True
     else:
         return False
@@ -734,13 +740,13 @@ def get_in_hole (path: PathSolution):
     rotation = path.rotation
 
     if rotation == LYING_X and y == land.y_dest:
-        if weigh_map[y][x] == 2 and x < land.x_dest:
+        if weigh_map[y][x+1] == 2 and x < land.x_dest:
             path.actual_path += 'R'
             path.last_step += 1
             return True
         
 
-        if weigh_map[y][x-1] == 2 and x > land.x_dest:
+        if weigh_map[y][x] == 2 and x > land.x_dest:
             path.actual_path += 'L'
             path.last_step += 1
             return True
@@ -748,12 +754,12 @@ def get_in_hole (path: PathSolution):
         
 
     if rotation == LYING_Y and x == land.x_dest:
-        if land.y_dest < y and weigh_map[y-1][x] == 2:
+        if land.y_dest < y and weigh_map[y][x] == 2:
             path.actual_path += 'U'
             path.last_step += 1
             return True
         
-        if land.y_dest > y and weigh_map[y][x] == 2:
+        if land.y_dest > y and weigh_map[y+1][x] == 2:
             path.actual_path += 'D'
             path.last_step += 1
             return True
@@ -762,55 +768,6 @@ def get_in_hole (path: PathSolution):
         return True
     
     return False
-
-def isVisited(block: Block):
-    if block.rotation != SPLIT:
-
-        for item in passState:
-            if item.x == block.x and item.y == block.y and \
-                    item.rotation == block.rotation and item.board == block.board:
-                return True
-
-    else:  # case SPLIT
-        for item in passState:
-            if item.x == block.x and item.y == block.y and \
-               item.x1 == block.x1 and item.y1 == block.y1 and \
-                    item.rotation == block.rotation and item.board == block.board:
-                return True
-
-    return False
-
-
-# def printSuccessRoad(block: Block):
-
-#     print("\nTHIS IS SUCCESS ROAD")
-#     print("================================")
-
-#     successRoad = [block]
-#     temp = block.parent
-
-#     while temp != None:
-
-#         if temp.rotation != SPLIT:
-#             newBlock = Block(temp.x, temp.y,
-#                              temp.rotation, temp.parent, temp.board)
-#         else:  # case SPLIT
-#             newBlock = Block(temp.x, temp.y,
-#                              temp.rotation, temp.parent, temp.board, temp.x1, temp.y1)
-
-#         successRoad = [newBlock] + successRoad
-
-#         temp = temp.parent
-
-#     step = 0
-#     for item in successRoad:
-#         step += 1
-#         print("\nStep:", step, end=' >>>   ')
-#         item.disPlayPosition()
-#         print("=============================")
-#         item.displayBoard()
-
-#     print("COMSUME", step, "STEP!!!!")
 
 
 def print_2d_arr(arr):
@@ -821,15 +778,22 @@ def print_2d_arr(arr):
 # START PROGRAM HERE
 passState: List[Block] = []
 
-# MAP_ROW, MAP_COL, xStart, yStart, source_map, man_board = read_map(
-#     'map/map'+sys.argv[1:][0]+'.txt')
 MAP_ROW, MAP_COL, xStart, yStart, source_map, man_board = read_map(
-    'map/map02.txt')
+    'map/map'+sys.argv[1:][0]+'.txt')
+# MAP_ROW, MAP_COL, xStart, yStart, source_map, man_board = read_map(
+#     'map/map02.txt')
 land = Land(source_map, MAP_ROW, MAP_COL)
 weigh_map = BFS_weigh(land.y_dest, land.x_dest, MAP_ROW, MAP_COL, source_map, man_board)
+start = time.time()
 population = generate_population(POPULATION_SIZE)
 print_2d_arr(weigh_map)
 population, geneneration = evolve(population=population)
+end = time.time()
+
+print(f"Time taken: {(end-start)*10**3:.03f}ms")
 print(
     f'Population with destination length = {fitness_path(population[0])} with path [{population[0].actual_path}] at generation {geneneration}')
 
+# test = 'RUUDDRRRRLURULDDDRRRRRULU'
+# init = PathSolution(path=test)
+# print(fitness_path(init))
