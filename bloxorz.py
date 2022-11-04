@@ -1,16 +1,18 @@
 from copy import copy, deepcopy
 from math import sqrt
+from operator import truediv
 from random import choice, choices, randint, randrange, random
-from subprocess import list2cmdline
 import sys
 from typing import List, Tuple
 
+from utils import BFS_weigh
+
 # constant genetic variables
-POPULATION_SIZE = 10
+POPULATION_SIZE = 12
 # NUMB_OF_ELITE_PATH_SOLUTION = 1
-TOURNAMENT_SELECTION_SIZE = 5
-MUTATION_RATE = 0.1
-GENERATION_LIMIT = 10000
+# TOURNAMENT_SELECTION_SIZE = 5
+# MUTATION_RATE = 0.1 -> 1/step
+GENERATION_LIMIT = 1000
 
 # special point
 DESTINATION = 9
@@ -50,29 +52,29 @@ def read_map(fileMap):
     with open(fileMap) as f:
         MAP_ROW, MAP_COL, xStart, yStart = [
             int(x) for x in next(f).split()]  # read first line
-        sourceMap = []
+        source_map = []
         countMapLine = 1
         for line in f:  # read map
             countMapLine += 1
-            sourceMap.append([int(x) for x in line.split()])
+            source_map.append([int(x) for x in line.split()])
             if countMapLine > MAP_ROW:
                 break
 
         # read managedBoard
         managedBoard = []
-        for line in f:  # read manaBoa
+        for line in f:  # read man_board
             # 2 2 4 4 4 5
             managedBoard.append([int(x) for x in line.split()])
 
     print("\nYOUR MAP LOOK LIKE THIS:")
-    for item in sourceMap:
+    for item in source_map:
         print(item)
     print("Start at (", xStart, ",", yStart, ")")
     print("Managed Board:")
     for item in managedBoard:
         print(item)
     print("======================================")
-    return MAP_ROW, MAP_COL, xStart, yStart, sourceMap, managedBoard
+    return MAP_ROW, MAP_COL, xStart, yStart, source_map, managedBoard
 
 
 ## GENETIC ALGORITHM ##
@@ -83,7 +85,7 @@ def generate_population(population_size: int) -> Population:
     while (len(population) < population_size):
         new_path = PathSolution().initialize(rand_path_size)
         fitness_path(new_path)
-        if (new_path.last_step > 3):
+        if (new_path.last_step > 5):
             population.append(new_path)
     return population
 
@@ -93,35 +95,79 @@ def selection_pair(population: Population) -> Population:
     for path in population:
         value = fitness_path(path)
         weight_of_fitness.append(1/value if value != 0 else 1)
-    choice = choices(population=population, weights=weight_of_fitness, k=2)
+    choice = deepcopy(choices(population=population, weights=weight_of_fitness, k=2))
     return choice
 
 
-def crossover_single_point(a: 'PathSolution', b: 'PathSolution'):
+def crossover_single_or_two(a: 'PathSolution', b: 'PathSolution', probability = 0.8):
+    if (a == b): return a,b
     path1 = a.path
     path2 = b.path
 
     # Cross at last step
     pos = min(a.last_step, b.last_step) if min(
-        a.last_step, b.last_step) > 0 else 1
-    a.path = path1[0:pos] + path2[pos:]
-    b.path = path2[0:pos] + path1[pos:]
+        a.last_step, b.last_step) > 2 else 1
+    pos1 = randrange(0, pos)
+    if (pos1 == 0 or random() < probability): return a,b
+
+    if len(path1) > pos1+2 and len(path2) > pos1+2 and pos > pos1+1:
+        pos2 = randrange(pos1+1, pos)
+        a.path = path1[0:pos1] + path2[pos1:pos2] + path1[pos2:]
+        b.path = path2[0:pos1] + path1[pos1:pos2] + path2[pos2:]
+
+    else:
+        a.path = path1[0:pos1] + path2[pos1:]
+        b.path = path2[0:pos1] + path1[pos1:]
+
+    # uniform_point = choices([0,1], k=pos)
+
+    # for i in range(pos):
+    #     if uniform_point[i] == 1:
+    #         ''' :>>>> '''
+    
     return a, b
 
+def uniform_crossover(a: 'PathSolution', b: 'PathSolution', probability = 0.8):
+    if (a == b): return a,b
+    path1 = a.path
+    path2 = b.path
+    child_path1 = ''
+    child_path2 = ''
 
-def mutation(path_obj: 'PathSolution', num: int = 1, probability: float = 0.5) -> 'PathSolution':
+    leng = min(len(path1), len(path2)) 
+    for idx in range(leng):
+        rand = random()
+
+        if (rand > 0.8):
+            child_path1 += path1[idx]
+            child_path2 += path2[idx]
+        elif rand > 0.3:
+            child_path1 += path2[idx]
+            child_path2 += path1[idx]
+        else:
+            child_path1 += choice('UDLR')
+            child_path2 += choice('UDLR')
+
+    a.path = child_path1
+    b.path = child_path2
+    return a,b
+
+
+def mutation(path_obj: 'PathSolution', probability: float = 0.5) -> 'PathSolution':
     path = path_obj.path
     direction = 'UDLR'
-    # print(f'last = {path_obj.last_step}')
+    mutated_path = ''
 
-    if len(path) <= 1:
-        return path_obj
-    for _ in range(num):
-        index = randrange(0, path_obj.last_step+2, 1)
-        rand_direction = choice(direction.replace(path[index], ''))
-        pos_dir = path[index] if random(
-        ) > probability else rand_direction
-        path_obj.path = path[0:index] + pos_dir + path[index+1:]
+    for idx in range(len(path)):
+        random_prob = random()
+        if (random_prob > probability): 
+            mutated_path += path[idx]
+
+        else:
+            rand_direction = choice(direction.replace(path[idx], ''))
+            mutated_path += rand_direction
+
+    path_obj.path = mutated_path
     return path_obj
 
 
@@ -130,17 +176,18 @@ def evolve(population: Population):
         sorted_paths = sorted(
             population, key=lambda path: fitness_path(path), reverse=False)
 
-        if fitness_path(sorted_paths[0]) == 0:
+        if sorted_paths[0].distance_to_destination == 0:
             break
 
         next_generation = sorted_paths[0:2]
+        # temp_pop = deepcopy(population)
 
-        for _ in range(len(sorted_paths)//2 - 1):
+        for _ in range(len(sorted_paths)//2):
             parents = selection_pair(population)
-            offspring_a, offspring_b = crossover_single_point(
+            offspring_a, offspring_b = uniform_crossover(
                 parents[0], parents[1])
-            offspring_a = mutation(offspring_a)
-            offspring_b = mutation(offspring_b)
+            # offspring_a = mutation(offspring_a)
+            # offspring_b = mutation(offspring_b)
             next_generation += [offspring_a, offspring_b]
 
         population = next_generation
@@ -317,19 +364,16 @@ class Land:
                 continue
                 #     print("destination hasn't been found")
 
-    def weigh_map(self):
-        for row in range(MAP_ROW - 1):
-            print()
-
 
 class PathSolution:
-    def __init__(self, path: str = '', last_step=0, distance: float = 0, x=0, y=0, actual_path=''):
+    def __init__(self, path: str = '', last_step=0, distance: float = 0, x=0, y=0, actual_path='', rotation=None):
         self.path = path
         self.distance_to_destination = distance
         self.last_step = last_step
         self.x_finish = x
         self.y_finish = y
         self.actual_path = actual_path
+        self.rotation = rotation
 
     def initialize(self, rand_path_size):
         rand_path = choices([UP, DOWN, RIGHT, LEFT], k=rand_path_size)
@@ -341,15 +385,12 @@ class PathSolution:
 
 
 def distance_to_goal(x, y):
-    x_dest = land.x_dest
-    y_dest = land.y_dest
-    return sqrt(
-        (x-x_dest)**2 + (y-y_dest)**2)
+    # print(f'weigh_map ({x},{y}) = {weigh_map[y][x]}')
+    return weigh_map[y][x]
 
 
 def fitness_path(rand_path: PathSolution) -> float:
-    block = Block(xStart, yStart, STANDING, None, sourceMap)
-    min_dist = sqrt(MAP_COL**2 + MAP_ROW**2)
+    block = Block(xStart, yStart, STANDING, None, source_map)
 
     path = rand_path.path
     actual_path: str = ''
@@ -365,8 +406,7 @@ def fitness_path(rand_path: PathSolution) -> float:
                        distance_to_goal(x1, y1))
         else:
             dist = distance_to_goal(x, y)
-
-        min_dist = dist if dist < min_dist else min_dist
+            current_rotation = block.rotation
         if direction == UP:
             block.move_up()
         elif direction == DOWN:
@@ -379,32 +419,29 @@ def fitness_path(rand_path: PathSolution) -> float:
             pass
 
         if (isValidBlock(block) == False):
-            if (len(ManaBoa) != 0):
-                # DEFINE Fitness Func
-                print()
             rand_path.x_finish = x
             rand_path.y_finish = y
             rand_path.last_step = idx
-            rand_path.distance_to_destination = min_dist
+            rand_path.distance_to_destination = dist
             rand_path.actual_path = actual_path
+            rand_path.rotation = current_rotation
+
+            if (dist <=3 and get_in_hole(rand_path)): 
+                rand_path.distance_to_destination = 0
+                return 0
             break
         else:
             actual_path += direction
 
-    # if (actual_path == path):
-    #     print('\n>>>> The same generated path')
-
-    # print('\n >>>> This is path = ' + rand_path.path)
-    # print(
-    #     f'\n >>> after moving => (x,y) = ({rand_path.x_finish}, {rand_path.y_finish}) with distance to goal = {dist}')
-    return min_dist
+    # print(f'weigh_map ({x},{y}) = {weigh_map[y][x]}')
+    return dist
 # Case 3: Chữ X
 
 
 def isHeavyToggleSwitch(block: Block, x, y):
     board = block.board
 
-    for item in ManaBoa:
+    for item in man_board:
         if (x, y) == (item[0], item[1]):
 
             # TOGGLEEEE
@@ -458,7 +495,7 @@ def isSoftSwitchCloseOnly(block: Block, x, y):
 
     # print(f'(x,y) = ({x},{y})')
 
-    for item in ManaBoa:
+    for item in man_board:
         if (x, y) == (item[0], item[1]):
             num = item[2]
             for i in range(num):
@@ -473,7 +510,7 @@ def isSoftToggleSwitch(block: Block, x, y):
     board = block.board
     # print(f'(x,y) = ({x},{y})')
 
-    for item in ManaBoa:
+    for item in man_board:
         if (x, y) == (item[0], item[1]):
 
             numToggle = item[2]     # numtoggle
@@ -523,7 +560,7 @@ def isSoftToggleSwitch(block: Block, x, y):
 def isSoftSwitchOpenOnly(block: Block, x, y):
     board = block.board
 
-    for item in ManaBoa:
+    for item in man_board:
         if (x, y) == (item[0], item[1]):
             num = item[2]
             for i in range(num):
@@ -537,7 +574,7 @@ def isSoftSwitchOpenOnly(block: Block, x, y):
 def isTeleport(block: Block, x, y):
     board = block.board
     array = []
-    for item in ManaBoa:
+    for item in man_board:
         if (x, y) == (item[0], item[1]):
             num = item[2]
             # format x7 y7 2 x y x1 y1
@@ -557,7 +594,7 @@ def isTeleport(block: Block, x, y):
 def isHeavySwitchOpenOnly(block: Block, x, y):
     board = block.board
 
-    for item in ManaBoa:
+    for item in man_board:
         if (x, y) == (item[0], item[1]):
 
             num = item[2]
@@ -578,7 +615,7 @@ def isFloor(block: Block):
         if rotation == STANDING:
             return True
         elif rotation == LYING_Y:
-            if y+1 < MAP_ROW and board[y+1][x] != 0:
+            if y+1 < MAP_ROW and y-1 >= 0 and board[y+1][x] != 0:
                 return True
         elif rotation == LYING_X:
             if x+1 < MAP_COL and board[y][x+1] != 0:
@@ -691,6 +728,40 @@ def isGoal(block: Block):
     else:
         return False
 
+def get_in_hole (path: PathSolution):
+    x = path.x_finish
+    y = path.y_finish
+    rotation = path.rotation
+
+    if rotation == LYING_X and y == land.y_dest:
+        if weigh_map[y][x] == 2 and x < land.x_dest:
+            path.actual_path += 'R'
+            path.last_step += 1
+            return True
+        
+
+        if weigh_map[y][x-1] == 2 and x > land.x_dest:
+            path.actual_path += 'L'
+            path.last_step += 1
+            return True
+
+        
+
+    if rotation == LYING_Y and x == land.x_dest:
+        if land.y_dest < y and weigh_map[y-1][x] == 2:
+            path.actual_path += 'U'
+            path.last_step += 1
+            return True
+        
+        if land.y_dest > y and weigh_map[y][x] == 2:
+            path.actual_path += 'D'
+            path.last_step += 1
+            return True
+    
+    if rotation == STANDING and source_map[y][x] == DESTINATION: 
+        return True
+    
+    return False
 
 def isVisited(block: Block):
     if block.rotation != SPLIT:
@@ -710,59 +781,55 @@ def isVisited(block: Block):
     return False
 
 
-def printSuccessRoad(block: Block):
+# def printSuccessRoad(block: Block):
 
-    print("\nTHIS IS SUCCESS ROAD")
-    print("================================")
+#     print("\nTHIS IS SUCCESS ROAD")
+#     print("================================")
 
-    successRoad = [block]
-    temp = block.parent
+#     successRoad = [block]
+#     temp = block.parent
 
-    while temp != None:
+#     while temp != None:
 
-        if temp.rotation != SPLIT:
-            newBlock = Block(temp.x, temp.y,
-                             temp.rotation, temp.parent, temp.board)
-        else:  # case SPLIT
-            newBlock = Block(temp.x, temp.y,
-                             temp.rotation, temp.parent, temp.board, temp.x1, temp.y1)
+#         if temp.rotation != SPLIT:
+#             newBlock = Block(temp.x, temp.y,
+#                              temp.rotation, temp.parent, temp.board)
+#         else:  # case SPLIT
+#             newBlock = Block(temp.x, temp.y,
+#                              temp.rotation, temp.parent, temp.board, temp.x1, temp.y1)
 
-        successRoad = [newBlock] + successRoad
+#         successRoad = [newBlock] + successRoad
 
-        temp = temp.parent
+#         temp = temp.parent
 
-    step = 0
-    for item in successRoad:
-        step += 1
-        print("\nStep:", step, end=' >>>   ')
-        item.disPlayPosition()
-        print("=============================")
-        item.displayBoard()
+#     step = 0
+#     for item in successRoad:
+#         step += 1
+#         print("\nStep:", step, end=' >>>   ')
+#         item.disPlayPosition()
+#         print("=============================")
+#         item.displayBoard()
 
-    print("COMSUME", step, "STEP!!!!")
+#     print("COMSUME", step, "STEP!!!!")
 
 
-def print_population_with():
-    print()
+def print_2d_arr(arr):
+    for row in arr:
+        print(row)
 
 
 # START PROGRAM HERE
 passState: List[Block] = []
 
-
-# MAP_ROW, MAP_COL, xStart, yStart, sourceMap, ManaBoa = read_map(
+# MAP_ROW, MAP_COL, xStart, yStart, source_map, man_board = read_map(
 #     'map/map'+sys.argv[1:][0]+'.txt')
 MAP_ROW, MAP_COL, xStart, yStart, source_map, man_board = read_map(
     'map/map02.txt')
+land = Land(source_map, MAP_ROW, MAP_COL)
+weigh_map = BFS_weigh(land.y_dest, land.x_dest, MAP_ROW, MAP_COL, source_map, man_board)
+population = generate_population(POPULATION_SIZE)
+print_2d_arr(weigh_map)
+population, geneneration = evolve(population=population)
+print(
+    f'Population with destination length = {fitness_path(population[0])} with path [{population[0].actual_path}] at generation {geneneration}')
 
-# land = Land(sourceMap, MAP_ROW, MAP_COL)
-# init_block = Block(xStart, yStart, STANDING, None, sourceMap)
-# population = generate_population(POPULATION_SIZE)
-# population, geneneration = evolve(population=population)
-# print(
-#     f'Population with destination length = {fitness_path(population[0])} with path [{population[0].path[0:population[0].last_step]}] at generation {geneneration}')
-
-
-# FITNESS = min_dist*10 + if(has bridge) pass_no_bridge + 100 / pass_bridge
-# ĐỊNH NGHĨA LẠI DISTANCE :>
-# sys.modules[__name__] = 'bloxorz'
